@@ -1,5 +1,6 @@
 ﻿// Example Program for CSHARPMSR605X
 using MagStripeTest;
+using System.Collections;
 
 CSHARPMSR605X api = new CSHARPMSR605X();
 bool success = api.Connect();
@@ -10,5 +11,9 @@ if (!success)
 }
 api.Reset();
 Thread.Sleep(1000);
-byte[] returnmodel = await api.TestConnection();
-Console.WriteLine(returnmodel);
+while (true)
+{
+    byte[] returnmodel = api.ReadCardRaw();
+    Console.WriteLine(CSHARPMSR605X.ConvertByteArrayToString(returnmodel));
+    Console.WriteLine(BitConverter.ToString(returnmodel).Replace("-", " "));
+}
