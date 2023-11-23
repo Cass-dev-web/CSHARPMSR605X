@@ -114,7 +114,7 @@ namespace MagStripeTest
                 openConfiguration.SetOption(OpenOption.Exclusive, true);
                 openConfiguration.SetOption(OpenOption.Transient, true);
                 MSRStream = MSR605X.Open();
-                MSRStream.ReadTimeout = 10000;
+                MSRStream.ReadTimeout = Timeout.Infinite;
             }catch(Exception err)
             {
                 Console.WriteLine($"Error opening stream: {err.Message}");
@@ -273,7 +273,7 @@ namespace MagStripeTest
                 byte indexByte = rawData[i];
                 if (indexByte == 0x1B && (rawData.Length >= i - 1 && rawData[i - 1] == 0x1C) && (rawData.Length >= i - 2 && rawData[i - 2] == 0x3F))
                 {
-                    endIndex = i-3;
+                    endIndex = i-1;
                     break;
                 }
             }
@@ -286,6 +286,9 @@ namespace MagStripeTest
             public string? Track1;
             public string? Track2;
             public string? Track3;
+            public byte[]? Track1ByteArray;
+            public byte[]? Track2ByteArray;
+            public byte[]? Track3ByteArray;
         }
         /// <summary>
         /// Read card and return specific userfriendly class.
@@ -293,10 +296,46 @@ namespace MagStripeTest
         public async Task<ReadCardInformation> ReadCard()
         {
             byte[] returns = ReadCardRaw();
+            returns= returns.Skip(3).ToArray();
             ReadCardInformation readCardInformation = new ReadCardInformation();
-            // parse tracks
-
+            // parse tracks: 1B01[string1]1B02[string2]1B03[string3]
+            // - TRACK 1
+            int endTrack1 = 0;
+            int endTrack2 = 0;
+            int endTrack3 = 0;
+            for (int i = 0; i < returns.Length; i++)
+            {
+                byte item = returns[i];
+                if(item==0x1B && (returns.Length >= i + 1 && returns[i + 1] == 0x02))
+                {
+                    endTrack1 = i-1;
+                }else if (item == 0x1B && (returns.Length >= i + 1 && returns[i + 1] == 0x03))
+                {
+                    endTrack2 = i - 4;
+                }
+                else if (item == 0x3F && (returns.Length >= i + 1 && returns[i + 1] == 0x1B))
+                {
+                    endTrack3 = i - 1;
+                }
+            }
+            byte[] track1ByteArray = new byte[endTrack1];
+            Array.Copy(returns, 0, track1ByteArray, 0, track1ByteArray.Length);
+            readCardInformation.Track1 = ConvertByteArrayToString(track1ByteArray);
+            readCardInformation.Track1ByteArray = track1ByteArray;
             //
+            byte[] track2ByteArray = new byte[endTrack2-endTrack1-1];
+            Array.Copy(returns, endTrack1+4, track2ByteArray, 0, track2ByteArray.Length);
+            readCardInformation.Track2 = ConvertByteArrayToString(track2ByteArray);
+            readCardInformation.Track2ByteArray = track2ByteArray;
+            //
+            // TODO: Fix third track parsing, its currently broken.
+            if(endTrack3 - endTrack2 - 2 > 0)
+            {
+                byte[] track3ByteArray = new byte[endTrack3 - endTrack2-2];
+                Array.Copy(returns, endTrack1, track3ByteArray, 0, track3ByteArray.Length);
+                readCardInformation.Track3 = ConvertByteArrayToString(track3ByteArray);
+                readCardInformation.Track3ByteArray = track3ByteArray;
+            }
             return readCardInformation;
         }
     }
