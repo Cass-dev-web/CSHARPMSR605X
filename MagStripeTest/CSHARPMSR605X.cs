@@ -60,6 +60,31 @@ namespace MagStripeTest
         {
             return array1.Concat(array2).ToArray();
         }
+
+        public enum MSRStatus
+        {
+            OK,
+            // errors
+            ERROR_WRITE_READ,
+            ERROR_COMMAND_FORMAT,
+            ERROR_INVALID_COMMAND,
+            ERROR_INVALID_SWIPE,
+            // runtime err
+            INVALID_STATUS_BYTE
+        }
+
+        public static readonly Dictionary<byte, MSRStatus> MSRStatusByteLookupTable = new Dictionary<byte, MSRStatus>()
+        {
+            { 0x30, MSRStatus.OK},
+            { 0x31, MSRStatus.ERROR_WRITE_READ},
+            { 0x32, MSRStatus.ERROR_COMMAND_FORMAT},
+            { 0x34, MSRStatus.ERROR_INVALID_COMMAND},
+            { 0x39, MSRStatus.ERROR_INVALID_SWIPE}
+        };
+        public static MSRStatus TranslateStatusByte(byte status)
+        {
+            return (MSRStatusByteLookupTable.ContainsKey(status)?MSRStatusByteLookupTable[status]:MSRStatus.INVALID_STATUS_BYTE);
+        }
         private byte[] CreateReportData(int interfaceNumber, List<byte> data, int length = 0)
         {
             // Create a report to send from a hex dump.
@@ -379,6 +404,22 @@ namespace MagStripeTest
                 readCardInformation.Track3ByteArray = track3ByteArray;
             }
             return readCardInformation;
+        }
+
+        enum WriteStatusReturn
+        {
+            OK,
+            ERROR
+        }
+        /// <summary>
+        /// Write card.
+        /// </summary>
+        /// <returns>Status byte, can be translated using translatestatusbyte method.</returns>
+        public async Task<byte> WriteCard(string Track1, string Track2, string Track3)
+        {
+            //TODO: implement
+            throw new NotImplementedException();
+            return 0x00;
         }
     }
 }
