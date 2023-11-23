@@ -16,14 +16,13 @@ using static System.Net.Mime.MediaTypeNames;
  */
 namespace MagStripeTest
 {
-    internal class CSHARPMSR605X
+    public class CSHARPMSR605X
     {
         // VARS
         const byte INTERFACE = 0x00;
         const int MAX_OUTPUT_BITS = 7813;
         HidDevice? MSR605X = null;
         HidStream? MSRStream = null;
-        private List<byte> _responses = new List<byte>();
         ////////
         static bool ContainsSubSequence(byte[] mainArray, byte[] subSequence)
         {
@@ -48,7 +47,7 @@ namespace MagStripeTest
             }
             return true;
         }
-        private List<byte> ExtendCommand(List<byte> command, int length = 64)
+        private List<byte> ExtendCommand(List<byte> command, int length = 1024)
         {
             // Extend a command until it fills out the specified number of bytes.
             List<byte> remaining = new List<byte>(new byte[length - command.Count]);
@@ -70,6 +69,7 @@ namespace MagStripeTest
             ERROR_INVALID_COMMAND,
             ERROR_INVALID_SWIPE,
             // runtime err
+            INTERNAL_ERROR,
             INVALID_STATUS_BYTE
         }
 
@@ -79,11 +79,12 @@ namespace MagStripeTest
             { 0x31, MSRStatus.ERROR_WRITE_READ},
             { 0x32, MSRStatus.ERROR_COMMAND_FORMAT},
             { 0x34, MSRStatus.ERROR_INVALID_COMMAND},
-            { 0x39, MSRStatus.ERROR_INVALID_SWIPE}
+            { 0x39, MSRStatus.ERROR_INVALID_SWIPE},
+            { 0x40, MSRStatus.INTERNAL_ERROR}
         };
         public static MSRStatus TranslateStatusByte(byte status)
         {
-            return (MSRStatusByteLookupTable.ContainsKey(status)?MSRStatusByteLookupTable[status]:MSRStatus.INVALID_STATUS_BYTE);
+            return (MSRStatusByteLookupTable.ContainsKey(status) ? MSRStatusByteLookupTable[status] : MSRStatus.INVALID_STATUS_BYTE);
         }
         private byte[] CreateReportData(int interfaceNumber, List<byte> data, int length = 0)
         {
@@ -110,7 +111,7 @@ namespace MagStripeTest
         /// Connects to the MSR605X
         /// </summary>
         /// <returns>Success?</returns>
-        public bool Connect()
+        public bool Connect(int timeout)
         {
             // Search for devices
             HidDevice[] ConnectedDevices = DeviceList.Local.GetHidDevices().ToArray();
@@ -121,10 +122,10 @@ namespace MagStripeTest
                 MSR605X = connectedDevice;
             }
             this.MSR605X = MSR605X;
-            if (MSR605X!=null) openStream();
+            if (MSR605X != null) openStream(timeout);
             return (MSR605X != null);
         }
-        private void openStream()
+        private void openStream(int timeout)
         {
             if (this.MSR605X == null)
             {
@@ -139,8 +140,9 @@ namespace MagStripeTest
                 openConfiguration.SetOption(OpenOption.Exclusive, true);
                 openConfiguration.SetOption(OpenOption.Transient, true);
                 MSRStream = MSR605X.Open();
-                MSRStream.ReadTimeout = Timeout.Infinite;
-            }catch(Exception err)
+                MSRStream.ReadTimeout = timeout;
+            }
+            catch (Exception err)
             {
                 Console.WriteLine($"Error opening stream: {err.Message}");
             }
@@ -175,9 +177,13 @@ namespace MagStripeTest
             while (true)
             {
                 byte[] heldOutput = new byte[MAX_OUTPUT_BITS];
-                MSRStream.Read(heldOutput, 0, heldOutput.Length);
+                try
+                {
+                    MSRStream.Read(heldOutput, 0, heldOutput.Length);
+                }catch(Exception e) { return new byte[0]; }
+                MSRStream.Flush();
                 heldOutput = truncateOutput(heldOutput);
-                output=ConcatArrays(output, heldOutput);
+                output = ConcatArrays(output, heldOutput);
                 if (ContainsSubSequence(output, new byte[] { 0x3F, 0x1C, 0x1B })) break;
             }
             output = truncateOutput(output);
@@ -190,7 +196,7 @@ namespace MagStripeTest
             int startIndex = 0;
             for (int i = 0; i < inputArray.Length; i++)
             {
-                byte indexByte = inputArray[i]; 
+                byte indexByte = inputArray[i];
                 if (indexByte != 0x00)
                 {
                     startIndex = i;
@@ -199,7 +205,7 @@ namespace MagStripeTest
             }
             // Figure out end index 
             int endIndex = 0;
-            for (int i = inputArray.Length-1; i >= 0; i--)
+            for (int i = inputArray.Length - 1; i >= 0; i--)
             {
                 byte indexByte = inputArray[i];
                 if (indexByte != 0x00)
@@ -313,7 +319,7 @@ namespace MagStripeTest
                     erasionByte = 0x07;
                     break;
             }
-            SendByteCommandWaitReturn(new byte[] { 0xC5, 0x1B, 0x63, erasionByte});
+            SendByteCommandWaitReturn(new byte[] { 0xC5, 0x1B, 0x63, erasionByte });
         }
         /// <summary>
         /// Read card raw data.
@@ -321,15 +327,16 @@ namespace MagStripeTest
         public byte[] ReadCardRaw()
         {
             byte[] rawData = SendByteCommandWaitReturn(new byte[] { 0xC5, 0x1B, 0x72 });
+            if (rawData.Length == 0) return new byte[0];
             // STARTING/ENDING FIELDS: 1B 73 [CARD INFO] 3F 1C 1B [STATUS]
             // Figure out start 
             int startIndex = 0;
             for (int i = 0; i < rawData.Length; i++)
             {
                 byte indexByte = rawData[i];
-                if (indexByte == 0x1B && (rawData.Length>=i + 1 && rawData[i+1]==0x73))
+                if (indexByte == 0x1B && (rawData.Length >= i + 1 && rawData[i + 1] == 0x73))
                 {
-                    startIndex = i+2;
+                    startIndex = i + 2;
                     break;
                 }
             }
@@ -340,7 +347,7 @@ namespace MagStripeTest
                 byte indexByte = rawData[i];
                 if (indexByte == 0x1B && (rawData.Length >= i - 1 && rawData[i - 1] == 0x1C) && (rawData.Length >= i - 2 && rawData[i - 2] == 0x3F))
                 {
-                    endIndex = i-1;
+                    endIndex = i + 1;
                     break;
                 }
             }
@@ -348,8 +355,25 @@ namespace MagStripeTest
             Array.Copy(rawData, startIndex, formattedData, 0, formattedData.Length);
             return formattedData;
         }
+        private static void printByteStream(byte[] data)
+        {
+            Console.WriteLine(BitConverter.ToString(data).Replace("-", " "));
+        }
+        public byte attemptFetchStatusCode(byte[] dataarray)
+        {
+            for (int i = 0; i < dataarray.Length; i++)
+            {
+                byte d = dataarray[i];
+                if (dataarray.Length >= i + 3 && d == 0x3F && dataarray[i + 1] == 0x1C && dataarray[i + 2] == 0x1B) return dataarray[i + 3];
+            }
+            Console.WriteLine("Error attempting to fetch status code; did not reach status byte.");
+            return 0x40;
+        }
         public class ReadCardInformation
         {
+            public bool failed = false;
+            public MSRStatus? status;
+            public string? failmessage = null;
             public string? Track1;
             public string? Track2;
             public string? Track3;
@@ -363,8 +387,37 @@ namespace MagStripeTest
         public async Task<ReadCardInformation> ReadCard()
         {
             byte[] returns = ReadCardRaw();
-            returns= returns.Skip(3).ToArray();
+            if (returns.Length == 0)
+            {
+                ReadCardInformation errnoCard = new ReadCardInformation();
+                errnoCard.failed = true;
+                errnoCard.failmessage = "empty_return";
+                return errnoCard;
+            }
+            returns = returns.Skip(3).ToArray();
+            // Get status byte first
+            bool containsStatusCode = ContainsSubSequence(returns, new byte[] { 0x3F, 0x1C, 0x1B });
+            if (!containsStatusCode)
+            {
+                Console.WriteLine("DOES NOT CONTAIN STATUS!!");
+                ReadCardInformation errnoCard = new ReadCardInformation();
+                errnoCard.failed = true;
+                errnoCard.failmessage = "NO STATUS CODE ; EMPTY";
+                return errnoCard;
+            }
+            byte statusCode = attemptFetchStatusCode(returns);
+            MSRStatus status = TranslateStatusByte(statusCode);
+            if (status != MSRStatus.OK)
+            {
+                Console.WriteLine("ERROR TRYING TO READ CARD: " + status);
+                ReadCardInformation errnoCard = new ReadCardInformation();
+                errnoCard.failmessage = "Hardware error: " + status;
+                errnoCard.failed = true;
+                return errnoCard;
+            }
+            //
             ReadCardInformation readCardInformation = new ReadCardInformation();
+            readCardInformation.status = status;
             // parse tracks: 1B01[string1]1B02[string2]1B03[string3]
             // - TRACK 1
             int endTrack1 = 0;
@@ -373,10 +426,11 @@ namespace MagStripeTest
             for (int i = 0; i < returns.Length; i++)
             {
                 byte item = returns[i];
-                if(item==0x1B && (returns.Length >= i + 1 && returns[i + 1] == 0x02))
+                if (item == 0x1B && (returns.Length >= i + 1 && returns[i + 1] == 0x02))
                 {
-                    endTrack1 = i-1;
-                }else if (item == 0x1B && (returns.Length >= i + 1 && returns[i + 1] == 0x03))
+                    endTrack1 = i - 1;
+                }
+                else if (item == 0x1B && (returns.Length >= i + 1 && returns[i + 1] == 0x03))
                 {
                     endTrack2 = i - 4;
                 }
@@ -390,35 +444,44 @@ namespace MagStripeTest
             readCardInformation.Track1 = ConvertByteArrayToString(track1ByteArray);
             readCardInformation.Track1ByteArray = track1ByteArray;
             //
-            byte[] track2ByteArray = new byte[endTrack2-endTrack1-1];
-            Array.Copy(returns, endTrack1+4, track2ByteArray, 0, track2ByteArray.Length);
+            byte[] track2ByteArray = new byte[endTrack2 - endTrack1 - 1];
+            Array.Copy(returns, endTrack1 + 4, track2ByteArray, 0, track2ByteArray.Length);
             readCardInformation.Track2 = ConvertByteArrayToString(track2ByteArray);
             readCardInformation.Track2ByteArray = track2ByteArray;
             //
             // TODO: Fix third track parsing, its currently broken.
-            if(endTrack3 - endTrack2 - 2 > 0)
+            if (endTrack3 - endTrack2 - 2 > 0)
             {
-                byte[] track3ByteArray = new byte[endTrack3 - endTrack2-2];
+                byte[] track3ByteArray = new byte[endTrack3 - endTrack2 - 2];
                 Array.Copy(returns, endTrack1, track3ByteArray, 0, track3ByteArray.Length);
                 readCardInformation.Track3 = ConvertByteArrayToString(track3ByteArray);
                 readCardInformation.Track3ByteArray = track3ByteArray;
             }
             return readCardInformation;
         }
-
-        enum WriteStatusReturn
+        static byte[] ConvertTrackToBytes(string track1Data)
         {
-            OK,
-            ERROR
+            return Encoding.ASCII.GetBytes(track1Data);
         }
+
         /// <summary>
         /// Write card.
         /// </summary>
         /// <returns>Status byte, can be translated using translatestatusbyte method.</returns>
-        public async Task<byte> WriteCard(string Track1, string Track2, string Track3)
+        public async Task<MSRStatus> WriteCard(string Track1, string Track2, string? Track3)
         {
-            //TODO: implement
-            throw new NotImplementedException();
+            byte[] byteTrack1 = ConcatArrays(new byte[] { 0x1B, 0x01 }, ConvertTrackToBytes($"%{Track1}?"));
+            byte[] byteTrack2 = ConcatArrays(new byte[] { 0x1B, 0x02 }, ConvertTrackToBytes($";{Track2}?"));
+            byte[] byteTrack3 = (Track3 != null ? ConcatArrays(new byte[] { 0x1B, 0x03 }, ConvertTrackToBytes($";{Track3}?")) : new byte[] { 0x1B, 0x03 });
+            byte[] dataBlock = ConcatArrays(ConcatArrays(new byte[] { 0x1B, 0x77, 0x1B, 0x73 }, ConcatArrays(ConcatArrays(byteTrack1, byteTrack2), byteTrack3)), new byte[] { 0x3F, 0x1C });
+            Console.WriteLine("--------------");
+            printByteStream(dataBlock);
+            byte[] returnArray = SendByteCommandWaitReturn(dataBlock);
+            printByteStream(returnArray);
+            Console.WriteLine("--------------");
+            Console.WriteLine(ConvertByteArrayToString(returnArray));
+            Console.WriteLine("--------------");
+            Console.WriteLine(TranslateStatusByte(attemptFetchStatusCode(returnArray)));
             return 0x00;
         }
     }
