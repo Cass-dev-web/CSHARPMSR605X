@@ -11,11 +11,4 @@ if (!success)
 }
 api.Reset();
 Thread.Sleep(1000);
-while (true)
-{
-    byte[] returnmodelraw = api.ReadCardRaw();
-    Console.WriteLine(CSHARPMSR605X.ConvertByteArrayToString(returnmodelraw));
-    Console.WriteLine(BitConverter.ToString(returnmodelraw).Replace("-", " "));
-    CSHARPMSR605X.ReadCardInformation returnmodel = await api.ReadCard();
-    Console.WriteLine($"Track 1: {returnmodel.Track1} [{BitConverter.ToString(returnmodel.Track1ByteArray).Replace("-", " ")}]\nTrack 2: {returnmodel.Track2} [{BitConverter.ToString(returnmodel.Track2ByteArray).Replace("-", " ")}]");
-}
+// EXAMPLES HERE

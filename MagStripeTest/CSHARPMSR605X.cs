@@ -248,6 +248,48 @@ namespace MagStripeTest
         {
             return SendByteCommandWaitReturn(new byte[] { 0xC5, 0x1B, 0x65 });
         }
+        public enum ErasureType
+        {
+            TRACK1,
+            TRACK2,
+            TRACK3,
+            TRACK1_2,
+            TRACK1_3,
+            TRACK2_3,
+            TRACK1_2_3,
+        }
+        /// <summary>
+        /// Erases a card.
+        /// </summary>
+        public void Erase(ErasureType erasureType)
+        {
+            byte erasionByte = 0x00;
+            switch (erasureType)
+            {
+                case ErasureType.TRACK1:
+                    erasionByte = 0x00;
+                    break;
+                case ErasureType.TRACK2:
+                    erasionByte = 0x02;
+                    break;
+                case ErasureType.TRACK3:
+                    erasionByte = 0x04;
+                    break;
+                case ErasureType.TRACK1_2:
+                    erasionByte = 0x03;
+                    break;
+                case ErasureType.TRACK1_3:
+                    erasionByte = 0x05;
+                    break;
+                case ErasureType.TRACK2_3:
+                    erasionByte = 0x06;
+                    break;
+                case ErasureType.TRACK1_2_3:
+                    erasionByte = 0x07;
+                    break;
+            }
+            SendByteCommandWaitReturn(new byte[] { 0xC5, 0x1B, 0x63, erasionByte});
+        }
         /// <summary>
         /// Read card raw data.
         /// </summary>
