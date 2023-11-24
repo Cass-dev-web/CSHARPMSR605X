@@ -30,7 +30,7 @@ namespace MagStripeTest
         private static readonly Dictionary<string, byte> commandDictionary = new Dictionary<string, byte>()
         {
             {"READ",0x72},
-            {"WRITE",0x77}, // UNSURE
+            {"WRITE",0x77}, // UNSURE - DOES NOT WORK?
             {"RED_ONLY",0x85},
             {"GREEN_AND_YELLOW",0x84},
             {"GREEN_ONLY",0x83},
