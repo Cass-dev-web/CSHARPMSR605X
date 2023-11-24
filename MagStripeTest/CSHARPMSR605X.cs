@@ -1,11 +1,5 @@
 ﻿using HidSharp;
-using HidSharp.Reports;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
-using static System.Net.Mime.MediaTypeNames;
 /*
  * Name: CSHARPMSR605X
  * Author: cass-dev-web
@@ -21,8 +15,28 @@ namespace MagStripeTest
         // VARS
         const byte INTERFACE = 0x00;
         const int MAX_OUTPUT_BITS = 7813;
-        HidDevice? MSR605X = null;
-        HidStream? MSRStream = null;
+        HidDevice? MSR605X;
+        HidStream? MSRStream;
+
+        private static readonly byte[] DATA_BLOCK_START = new byte[] // Write Function
+        {
+            0x1B, commandDictionary["WRITE"], 0x1B, 0x73
+        };
+        private static readonly byte[] DATA_BLOCK_END = new byte[] // Write Function
+        {
+            0x3F, 0x1C
+        };
+
+        private static readonly Dictionary<string, byte> commandDictionary = new Dictionary<string, byte>()
+        {
+            {"READ",0x72},
+            {"WRITE",0x77}, // UNSURE
+            {"RED_ONLY",0x85},
+            {"GREEN_AND_YELLOW",0x84},
+            {"GREEN_ONLY",0x83},
+            {"NONE",0x81},
+            {"ALL",0x82},
+        };
         ////////
         static bool ContainsSubSequence(byte[] mainArray, byte[] subSequence)
         {
@@ -103,10 +117,6 @@ namespace MagStripeTest
             Buffer.BlockCopy(report.ToArray(), 0, buffer, 0, report.Count);
             return buffer;
         }
-        public CSHARPMSR605X()
-        {
-            // Empty
-        }
         /// <summary>
         /// Connects to the MSR605X
         /// </summary>
@@ -115,15 +125,15 @@ namespace MagStripeTest
         {
             // Search for devices
             HidDevice[] ConnectedDevices = DeviceList.Local.GetHidDevices().ToArray();
-            HidDevice? MSR605X = null;
+            HidDevice? MSR605XLocal = null;
             foreach (HidDevice connectedDevice in ConnectedDevices)
             {
                 if (connectedDevice.ProductID != 3 || connectedDevice.VendorID != 2049) continue;
-                MSR605X = connectedDevice;
+                MSR605XLocal = connectedDevice;
             }
-            this.MSR605X = MSR605X;
-            if (MSR605X != null) openStream(timeout);
-            return (MSR605X != null);
+            this.MSR605X = MSR605XLocal;
+            if (MSR605XLocal != null) openStream(timeout);
+            return (MSR605XLocal != null);
         }
         private void openStream(int timeout)
         {
@@ -168,7 +178,7 @@ namespace MagStripeTest
             if (this.MSRStream == null)
             {
                 Console.WriteLine("Cannot send byte without opening stream first.");
-                return new byte[0];
+                return Array.Empty<byte>();
             }
             // Send bytes
             SendByteCommandNoReturn(commandBytes);
@@ -180,7 +190,7 @@ namespace MagStripeTest
                 try
                 {
                     MSRStream.Read(heldOutput, 0, heldOutput.Length);
-                }catch(Exception e) { return new byte[0]; }
+                }catch(Exception _) { return Array.Empty<byte>(); }
                 MSRStream.Flush();
                 heldOutput = truncateOutput(heldOutput);
                 output = ConcatArrays(output, heldOutput);
@@ -224,7 +234,7 @@ namespace MagStripeTest
         /// </summary>
         public void Reset()
         {
-            SendByteCommandNoReturn(new byte[] { 0xC2, 0x1B, 0x61, 0x44, 0xF8, 0x19 });
+            SendByteCommandNoReturn(new byte[] { 0xC2, 0x1B, 0x61, 0x44, 0xF8, 0x19 }); // what??? this doesn't make sense when it comes to the programmer manual :/
         }
         public enum MSR605XColorType
         {
@@ -242,19 +252,19 @@ namespace MagStripeTest
             switch (colorType)
             {
                 case MSR605XColorType.RED_ONLY:
-                    SendByteCommandNoReturn(new byte[] { 0xC5, 0x1B, 0x85 });
+                    SendByteCommandNoReturn(new byte[] { 0xC5, 0x1B, commandDictionary["RED_ONLY"] });
                     break;
                 case MSR605XColorType.GREEN_AND_YELLOW:
-                    SendByteCommandNoReturn(new byte[] { 0xC5, 0x1B, 0x84 });
+                    SendByteCommandNoReturn(new byte[] { 0xC5, 0x1B, commandDictionary["GREEN_AND_YELLOW"] });
                     break;
                 case MSR605XColorType.GREEN_ONLY:
-                    SendByteCommandNoReturn(new byte[] { 0xC5, 0x1B, 0x83 });
+                    SendByteCommandNoReturn(new byte[] { 0xC5, 0x1B, commandDictionary["GREEN_ONLY"] });
                     break;
                 case MSR605XColorType.NONE:
-                    SendByteCommandNoReturn(new byte[] { 0xC5, 0x1B, 0x81 });
+                    SendByteCommandNoReturn(new byte[] { 0xC5, 0x1B, commandDictionary["NONE"] });
                     break;
                 case MSR605XColorType.ALL:
-                    SendByteCommandNoReturn(new byte[] { 0xC5, 0x1B, 0x82 });
+                    SendByteCommandNoReturn(new byte[] { 0xC5, 0x1B, commandDictionary["ALL"] });
                     break;
 
             }
@@ -326,7 +336,7 @@ namespace MagStripeTest
         /// </summary>
         public byte[] ReadCardRaw()
         {
-            byte[] rawData = SendByteCommandWaitReturn(new byte[] { 0xC5, 0x1B, 0x72 });
+            byte[] rawData = SendByteCommandWaitReturn(new byte[] { 0xC5, 0x1B, commandDictionary["READ"] });
             if (rawData.Length == 0) return new byte[0];
             // STARTING/ENDING FIELDS: 1B 73 [CARD INFO] 3F 1C 1B [STATUS]
             // Figure out start 
@@ -371,9 +381,9 @@ namespace MagStripeTest
         }
         public class ReadCardInformation
         {
-            public bool failed = false;
+            public bool failed;
             public MSRStatus? status;
-            public string? failmessage = null;
+            public string? failmessage;
             public string? Track1;
             public string? Track2;
             public string? Track3;
@@ -384,7 +394,7 @@ namespace MagStripeTest
         /// <summary>
         /// Read card and return specific userfriendly class.
         /// </summary>
-        public async Task<ReadCardInformation> ReadCard()
+        public ReadCardInformation ReadCard()
         {
             byte[] returns = ReadCardRaw();
             if (returns.Length == 0)
@@ -468,21 +478,21 @@ namespace MagStripeTest
         /// Write card.
         /// </summary>
         /// <returns>Status byte, can be translated using translatestatusbyte method.</returns>
-        public async Task<MSRStatus> WriteCard(string Track1, string Track2, string? Track3)
+        public MSRStatus WriteCard(string Track1, string Track2, string? Track3)
         {
-            byte[] byteTrack1 = ConcatArrays(new byte[] { 0x1B, 0x01 }, ConvertTrackToBytes($"%{Track1}?"));
-            byte[] byteTrack2 = ConcatArrays(new byte[] { 0x1B, 0x02 }, ConvertTrackToBytes($";{Track2}?"));
-            byte[] byteTrack3 = (Track3 != null ? ConcatArrays(new byte[] { 0x1B, 0x03 }, ConvertTrackToBytes($";{Track3}?")) : new byte[] { 0x1B, 0x03 });
-            byte[] dataBlock = ConcatArrays(ConcatArrays(new byte[] { 0x1B, 0x77, 0x1B, 0x73 }, ConcatArrays(ConcatArrays(byteTrack1, byteTrack2), byteTrack3)), new byte[] { 0x3F, 0x1C });
-            Console.WriteLine("--------------");
-            printByteStream(dataBlock);
-            byte[] returnArray = SendByteCommandWaitReturn(dataBlock);
-            printByteStream(returnArray);
-            Console.WriteLine("--------------");
-            Console.WriteLine(ConvertByteArrayToString(returnArray));
-            Console.WriteLine("--------------");
-            Console.WriteLine(TranslateStatusByte(attemptFetchStatusCode(returnArray)));
-            return 0x00;
+            // Translate tracks
+            byte[] Track1bytes = new byte[]{0x1B,0x01}.Concat(ConvertTrackToBytes($"%{Track1}?")).ToArray();
+            byte[] Track2bytes = new byte[]{0x1B,0x02}.Concat(ConvertTrackToBytes($";{Track2}?")).ToArray();
+            byte[] Track3bytes = (Track3!=null?new byte[]{0x1B,0x03}.Concat(ConvertTrackToBytes($";{Track3}?")).ToArray():Array.Empty<byte>());
+            //
+            byte[] cardData = Track1bytes.Concat(Track2bytes).ToArray().Concat(Track3bytes).ToArray();
+            byte[] dataBlock = DATA_BLOCK_START.Concat(cardData).ToArray().Concat(DATA_BLOCK_END).ToArray();
+            // return
+            byte[] returnBlock = SendByteCommandWaitReturn(dataBlock);
+            byte statusByte = attemptFetchStatusCode(returnBlock);
+            MSRStatus msr = TranslateStatusByte(statusByte);
+            // MSR returns 0x40 if no return byte (null)
+            return msr;
         }
     }
 }

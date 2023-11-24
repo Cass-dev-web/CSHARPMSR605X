@@ -16,4 +16,4 @@ api.Reset();
 // Thread.Sleep(500);
 // await api.WriteCard(r.Track1, r.Track2,null);
 Thread.Sleep(500);
-await api.WriteCard("HELLO", "000",null);
+api.WriteCard("HELLO", "000",null);
