@@ -9,7 +9,6 @@
 
   <ItemGroup>
     <PackageReference Include="HidSharp" Version="2.1.0" />
-    <PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.25936-preview" />
   </ItemGroup>
 
 </Project>

@@ -211,7 +211,7 @@ public class CSHARPMSR605X_2
                 track = 2;
                 continue;
             }
-            if (bit == 0x03 && i != 0 && return_agent[i - 1] == 0x1B && track == 1)
+            if (bit == 0x03 && i != 0 && return_agent[i - 1] == 0x1B && track == 2)
             {
                 track = 3;
                 continue;
