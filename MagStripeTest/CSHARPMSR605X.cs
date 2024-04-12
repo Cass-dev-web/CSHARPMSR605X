@@ -18,15 +18,6 @@ namespace MagStripeTest
         HidDevice? MSR605X;
         HidStream? MSRStream;
 
-        private static readonly byte[] DATA_BLOCK_START = new byte[] // Write Function
-        {
-            0x1B, commandDictionary["WRITE"], 0x1B, 0x73
-        };
-        private static readonly byte[] DATA_BLOCK_END = new byte[] // Write Function
-        {
-            0x3F, 0x1C
-        };
-
         private static readonly Dictionary<string, byte> commandDictionary = new Dictionary<string, byte>()
         {
             {"READ",0x72},
@@ -36,6 +27,15 @@ namespace MagStripeTest
             {"GREEN_ONLY",0x83},
             {"NONE",0x81},
             {"ALL",0x82},
+        };
+        
+        private static readonly byte[] DATA_BLOCK_START = new byte[] // Write Function
+        {
+            0x1B, commandDictionary["WRITE"], 0x1B, 0x73
+        };
+        private static readonly byte[] DATA_BLOCK_END = new byte[] // Write Function
+        {
+            0x3F, 0x1C
         };
         ////////
         static bool ContainsSubSequence(byte[] mainArray, byte[] subSequence)
@@ -145,10 +145,6 @@ namespace MagStripeTest
             //
             try
             {
-                OpenConfiguration openConfiguration = new OpenConfiguration();
-                openConfiguration.SetOption(OpenOption.Priority, OpenPriority.VeryHigh);
-                openConfiguration.SetOption(OpenOption.Exclusive, true);
-                openConfiguration.SetOption(OpenOption.Transient, true);
                 MSRStream = MSR605X.Open();
                 MSRStream.ReadTimeout = timeout;
             }
