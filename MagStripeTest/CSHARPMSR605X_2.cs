@@ -202,33 +202,20 @@ public class CSHARPMSR605X_2
         {
             var bit = return_agent[i];
             if (bit == 0x01 && i != 0 && return_agent[i - 1] == 0x1B && track == 0)
-            {
-                track = 1;
-                continue;
-            }
+            { track = 1; continue; }
             if (bit == 0x02 && i != 0 && return_agent[i - 1] == 0x1B && track == 1)
-            {
-                track = 2;
-                continue;
-            }
+            { track = 2; continue; }
             if (bit == 0x03 && i != 0 && return_agent[i - 1] == 0x1B && track == 2)
-            {
-                track = 3;
-                continue;
-            }
+            { track = 3; continue; }
+            if(bit==0x3F && return_agent[i+1]==0x1C && return_agent[i+2]==0x1B)
+                break; // End of track data (0x3F1C1B)
             // Track Parsing
             if(bit==0x1B) continue;
             switch (track)
             {
-                case 1:
-                    temp_track1.Add(bit);
-                    break;
-                case 2:
-                    temp_track2.Add(bit);
-                    break;
-                case 3:
-                    temp_track3.Add(bit);
-                    break;
+                case 1: temp_track1.Add(bit); break;
+                case 2: temp_track2.Add(bit); break;
+                case 3: temp_track3.Add(bit); break;
             }
         }
         data.Track1 = temp_track1.ToArray();
