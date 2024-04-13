@@ -9,6 +9,15 @@ namespace MagStripeTest;
 public class CSHARPMSR605X_2
 {
     // STRUCTURES
+    public enum Status
+    {
+        OK,                     // [30h] -> If read, write or command ok
+        READWRITE_ERROR,        // [31h] -> Write or read error
+        COMMAND_FORMAT_ERROR,   // [32h] -> Command format error
+        INVALID_COMMAND,        // [34h] -> Invalid command
+        INVALID_SWIPE_WRITE,    // [39h] -> Invalid card swipe when in write mode
+        INVALID_STATUS_BYTE     // No Associated Byte, Used in ParseStatusByte
+    }
     public struct MSRData
     {
         public byte[] Track1 { get; set; }
@@ -28,6 +37,15 @@ public class CSHARPMSR605X_2
     // CONSTANTS
     const int PRODUCT_ID = 3;
     const int VENDOR_ID = 2049;
+    private static readonly Dictionary<byte, Status> statusMap = new Dictionary<byte, Status>()
+    {
+        {0x30, Status.OK},
+        {0x31, Status.READWRITE_ERROR},
+        {0x32, Status.COMMAND_FORMAT_ERROR},
+        {0x34, Status.INVALID_COMMAND},
+        {0x39, Status.INVALID_SWIPE_WRITE},
+    };
+
     // PROPERTIES
     HidDevice? MSR605X { get; set; }
     HidStream? MSRStream { get; set; }
@@ -38,6 +56,7 @@ public class CSHARPMSR605X_2
     /// Error message if any.
     /// </summary>
     public string? ErrorMessage { get; set; }
+    public Status? ErrorStatus { get; set; }
     // PRIVATE METHODS
     private long unixGet()
     {
@@ -113,6 +132,11 @@ public class CSHARPMSR605X_2
         // DON'T ASK ME WHY, BUT THIS WORKS! Also, no clue why or WHERE this came from.
         return data.ToArray();
     }
+
+    private Status ParseStatusByte(byte status)
+    {
+        return statusMap.GetValueOrDefault(status, Status.INVALID_STATUS_BYTE);
+    }
     
     private void UDPSend(byte[] sendBuffer)
     {
@@ -180,6 +204,8 @@ public class CSHARPMSR605X_2
         return false;
     }
     
+    
+    
     /// <summary>
     /// Reads the card, simple.
     /// </summary>
@@ -189,7 +215,7 @@ public class CSHARPMSR605X_2
     {
         if (MSRStream == null) return null;
         UDPSend(new byte[] { 0x1B, 0x72 }); // read bytes
-        byte[]? return_agent = waitRead(new byte[] { 0x1B, 0x73, 0x1B, 0x01 }, OverrideReadTimeout!=0?OverrideReadTimeout:ReadTimeout);
+        byte[]? return_agent = waitRead(new byte[] { 0x1B, 0x73 }, OverrideReadTimeout!=0?OverrideReadTimeout:ReadTimeout);
         if (return_agent == null)
             return null;
         // Parse data
@@ -198,6 +224,7 @@ public class CSHARPMSR605X_2
         List<byte> temp_track2 = new List<byte>(); // USING LIST DUE TO UNKNOWN LENGTH
         List<byte> temp_track3 = new List<byte>(); // USING LIST DUE TO UNKNOWN LENGTH
         int track = 0;
+        byte? status = null;
         for (var i = 0; i < return_agent.Length; i++)
         {
             var bit = return_agent[i];
@@ -207,8 +234,11 @@ public class CSHARPMSR605X_2
             { track = 2; continue; }
             if (bit == 0x03 && i != 0 && return_agent[i - 1] == 0x1B && track == 2)
             { track = 3; continue; }
-            if(bit==0x3F && return_agent[i+1]==0x1C && return_agent[i+2]==0x1B)
+            if (bit == 0x3F && return_agent[i + 1] == 0x1C && return_agent[i + 2] == 0x1B)
+            {
+                if(return_agent.Length-1>=i+3) status=return_agent[i + 3];
                 break; // End of track data (0x3F1C1B)
+            }
             // Track Parsing
             if(bit==0x1B) continue;
             switch (track)
@@ -221,6 +251,13 @@ public class CSHARPMSR605X_2
         data.Track1 = temp_track1.ToArray();
         data.Track2 = temp_track2.ToArray();
         data.Track3 = temp_track3.Count == 0 ? null : temp_track3.ToArray();
+        if (status!=null && ParseStatusByte((byte)status) != Status.OK)
+        {
+            // Erorr Reading
+            ErrorMessage = "Error Reading Card, More Information Available on ErrorStatus";
+            ErrorStatus = ParseStatusByte((byte)status);
+            return null;
+        }
         return data;
     }
 }

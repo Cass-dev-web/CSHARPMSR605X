@@ -9,5 +9,8 @@ if (!MSR.TestConnection())
 // Reset
 MSR.Reset();
 CSHARPMSR605X_2.MSRData? data = MSR.ReadCardISO();
-Console.WriteLine(data?.toHeavyString());
+if (data != null)
+    Console.WriteLine(data?.toHeavyString());
+else 
+    Console.WriteLine(MSR.ErrorStatus.ToString());
 // Read the card
