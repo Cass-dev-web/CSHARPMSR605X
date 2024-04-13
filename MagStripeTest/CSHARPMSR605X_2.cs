@@ -185,7 +185,7 @@ public class CSHARPMSR605X_2
     /// </summary>
     /// <returns>Success?</returns>
     /// <param name="OverrideReadTimeout">Override the read timeout. Default is 0 (off).</param>
-    public MSRData? ReadCardISO(int OverrideReadTimeout = 0)
+    public MSRData? ReadCardISO(int OverrideReadTimeout = 0) // TODO: Error Detection
     {
         if (MSRStream == null) return null;
         UDPSend(new byte[] { 0x1B, 0x72 }); // read bytes
