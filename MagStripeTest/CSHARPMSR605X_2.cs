@@ -47,8 +47,8 @@ public class CSHARPMSR605X_2
     };
 
     // PROPERTIES
-    HidDevice? MSR605X { get; set; }
-    HidStream? MSRStream { get; set; }
+    public HidDevice? MSR605X { get; set; }
+    public HidStream? MSRStream { get; set; }
     int ReadTimeout { get; set; }
     int WriteTimeout { get; set; }
     public int ApiCallTimeout { get; set; }
@@ -74,16 +74,6 @@ public class CSHARPMSR605X_2
         // Cannot find license!
         return null;
     }
-
-    private void PrintBytes(bool char_, byte[] bytes, char divider = ' ')
-    {
-        foreach (var byte_ in bytes)
-        {
-            Console.Write(char_ ? System.Text.Encoding.UTF8.GetString(new[] { byte_ }) : byte_.ToString("X2"));
-            Console.Write(!char_ ? divider.ToString() : "");
-        }
-        Console.WriteLine();
-    }
     private bool SubPatternExistant(byte[] input, byte[] pattern)
     {
         // Check if a pattern exists in a byte array.
@@ -95,29 +85,13 @@ public class CSHARPMSR605X_2
         }
         return false;
     }
-
-    private byte[]? waitRead(byte[] sub_byte, int timeout)
-    {
-        if (MSRStream == null) return null;
-        long start_ms = unixGet();
-        while (unixGet() - start_ms <= timeout) // TODO: It looks like the timeout doesn't work when not being debugged... (??)
-        {
-            // Get input
-            byte[] out_buffer = MSRStream.Read();
-            if (out_buffer.Length == 0) continue;
-            MSRStream.Flush();
-            // Check if the response is correct
-            if(SubPatternExistant(out_buffer, sub_byte))
-                return out_buffer;
-        }
-        return null;
-    }
+    
     private bool Ready()
     {
         return this.MSRStream is { CanRead: true, CanWrite: true };
     }
     
-    private byte[] CreateReportData(List<byte> data, int length = 64)
+    private byte[] CreateReportData(List<byte> data, byte special_b = 0xC2, int length = 64)
     {
         // Create a report to send from a hex dump.
         if (data.Count < length)
@@ -127,7 +101,7 @@ public class CSHARPMSR605X_2
             data.AddRange(remaining);
         }
 
-        data=data.Prepend((byte)0xC2).ToList(); // Prepend the secondary interface code 0xC2
+        data=data.Prepend(special_b).ToList(); // Prepend the secondary interface code 0xC2
         data=data.Prepend((byte)0x00).ToList(); // Prepend the interface code 0x00
         // DON'T ASK ME WHY, BUT THIS WORKS! Also, no clue why or WHERE this came from.
         return data.ToArray();
@@ -158,6 +132,28 @@ public class CSHARPMSR605X_2
         this.WriteTimeout = writeTimeout;
     }
 
+    /// <summary>
+    /// Waits for a specific pattern of bytes to come in then returns the output.
+    /// </summary>
+    /// <param name="sub_byte">Search Pattern</param>
+    /// <param name="timeout">Timeout the search (experimental)</param>
+    /// <returns></returns>
+    public byte[]? WaitRead(byte[] sub_byte, int timeout)
+    {
+        if (MSRStream == null) return null;
+        long start_ms = unixGet();
+        while (unixGet() - start_ms <= timeout) // TODO: It looks like the timeout doesn't work when not being debugged... (??)
+        {
+            // Get input
+            byte[] out_buffer = MSRStream.Read();
+            if (out_buffer.Length == 0) continue;
+            MSRStream.Flush();
+            // Check if the response is correct
+            if(SubPatternExistant(out_buffer, sub_byte))
+                return out_buffer;
+        }
+        return null;
+    }
 
     /// <summary>
     /// Connects the device to the API.
@@ -181,6 +177,24 @@ public class CSHARPMSR605X_2
         return false;
     }
     
+    /// <summary>
+    /// Prints the bytes for debug.
+    /// </summary>
+    /// <param name="char_">If it should print as characters or HEX</param>
+    /// <param name="bytes">Output</param>
+    /// <param name="divider">Divider</param>
+    public static void PrintBytes(bool char_, byte[] bytes, char divider = ' ')
+    {
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            var byte_ = bytes[i];
+            Console.Write(char_ ? System.Text.Encoding.UTF8.GetString(new[] { byte_ }) : byte_.ToString("X2"));
+            Console.Write(!char_ ? ((i + 1)%16==0?'\n':((i+1)%8==0?"  ":divider.ToString())) : ""); // Byte Formatting
+        }
+
+        Console.WriteLine();
+    }
+    
     /// <summary>Reset the device to neutral state.</summary>
     public void Reset(){UDPSend(new byte[]{0x1B, 0x61});}
     
@@ -197,14 +211,21 @@ public class CSHARPMSR605X_2
     {
         if (MSRStream == null) return false;
         UDPSend(new byte[] { 0x1B, 0x65 });
-        byte[]? return_agent = waitRead(new byte[] { 0x00, 0xC2, 0x1B, 0x79 }, ApiCallTimeout);
+        byte[]? return_agent = WaitRead(new byte[] { 0x00, 0xC2, 0x1B, 0x79 }, ApiCallTimeout);
         if(return_agent != null)
             return true;
         ErrorMessage = "Timeout called on communication test API.";
         return false;
     }
     
-    
+    /// <summary>
+    /// Will set the CO status.
+    /// </summary>
+    public void SetCo(bool HighCo)
+    {
+        if (MSRStream == null) return;
+        UDPSend(new byte[] { 0x1B, (HighCo ? (byte)0x78 : (byte)0x79) });
+    }
     
     /// <summary>
     /// Reads the card, simple.
@@ -215,7 +236,7 @@ public class CSHARPMSR605X_2
     {
         if (MSRStream == null) return null;
         UDPSend(new byte[] { 0x1B, 0x72 }); // read bytes
-        byte[]? return_agent = waitRead(new byte[] { 0x1B, 0x73 }, OverrideReadTimeout!=0?OverrideReadTimeout:ReadTimeout);
+        byte[]? return_agent = WaitRead(new byte[] { 0x1B, 0x73 }, OverrideReadTimeout!=0?OverrideReadTimeout:ReadTimeout);
         if (return_agent == null)
             return null;
         // Parse data
@@ -260,4 +281,47 @@ public class CSHARPMSR605X_2
         }
         return data;
     }
+    
+    /// <summary>
+    /// Erases the card based on given parameters.
+    /// </summary>
+    public bool EraseCard(bool EraseTrack1, bool EraseTrack2, bool EraseTrack3)
+    {
+        if (MSRStream == null) return false;
+        byte? sel_byte = null;
+        if (EraseTrack1 && !EraseTrack2 && !EraseTrack3)
+            sel_byte = 0x00; // Erase Track 1
+        if (!EraseTrack1 && EraseTrack2 && !EraseTrack3)
+            sel_byte = 0x02; // Erase Track 2
+        if (!EraseTrack1 && !EraseTrack2 && EraseTrack3)
+            sel_byte = 0x04; // Erase Track 3
+        if (EraseTrack1 && EraseTrack2 && !EraseTrack3)
+            sel_byte = 0x03; // Erase Track 1&2
+        if (EraseTrack1 && !EraseTrack2 && EraseTrack3)
+            sel_byte = 0x05; // Erase Track 1&3
+        if (!EraseTrack1 && EraseTrack2 && EraseTrack3)
+            sel_byte = 0x06; // Erase Track 2&3
+        if (EraseTrack1 && EraseTrack2 && EraseTrack3)
+            sel_byte = 0x07; // Erase Track 1&2&3
+        if (sel_byte == null) return false;
+        List<byte> data = new List<byte>()
+        {
+            0x1B, 0x63, (byte)sel_byte
+        };
+        MSRStream.SetFeature(CreateReportData(data,0xC3));
+        byte[]? returnbytes = WaitRead(new byte[] { 0x1B }, ApiCallTimeout);
+        if (returnbytes == null) return false;
+        byte? status = null;
+        for (int i = 0; i < returnbytes.Length; i++)
+        {
+            if (returnbytes[i] == 0x1B && returnbytes[i + 1] == 0x30 || returnbytes[i + 1] == 0x41)
+            {
+                status = returnbytes[i + 1];
+                break;
+            }
+        }
+        if (status == null) return false;
+        return status == 0x30;
+    }
+
 }
