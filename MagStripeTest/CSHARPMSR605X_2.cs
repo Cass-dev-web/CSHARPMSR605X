@@ -22,6 +22,10 @@ public class CSHARPMSR605X_2
     public struct MSRData
     {
         public byte[] Track1 { get; set; }
+        public string byteToString(byte[] b)
+        {
+            return Encoding.UTF8.GetString(b);
+        }
         public byte[] Track2 { get; set; }
         public byte[]? Track3 { get; set; }
 
@@ -365,31 +369,34 @@ public class CSHARPMSR605X_2
     /// <returns>Status</returns>
     public Status? WriteCardISO(string? track1, string? track2, string? track3, int timeout = Int32.MaxValue)
     {
+        //BUG: Does not erase empty tracks
         if (MSRStream == null) return null;
-        byte[] b_track1 = track1==null?new byte[]{0x00}:Encoding.Default.GetBytes(track1);
-        byte[] b_track2 = track2==null?new byte[]{0x00}:Encoding.Default.GetBytes(track2);
-        byte[] b_track3 = track3==null?new byte[]{0x00}:Encoding.Default.GetBytes(track3);
+        byte[]? b_track1 = track1==null?null:Encoding.Default.GetBytes(track1);
+        byte[]? b_track2 = track2==null?null:Encoding.Default.GetBytes(track2);
+        byte[]? b_track3 = track3==null?null:Encoding.Default.GetBytes(track3);
         List<byte> send_data = new List<byte>
         {
-            0x1B, 0x77, 0x1B, 0x73, 
-            0x1B, 0x01
+            0x1B, 0x77, 0x1B, 0x73
         };
-        if (track1 == null)
-            send_data.Add(0x00);
-        else
+        
+        if (b_track1 != null)
+        {
+            send_data.AddRange(new byte[]{0x1B, 0x01});
             send_data.AddRange(b_track1);
-        send_data.AddRange(new byte[]{0x1B, 0x02});
-        if(track2==null)
-            send_data.Add(0x00);
-        else
+        }
+        if (b_track2 != null)
+        {
+            send_data.AddRange(new byte[]{0x1B, 0x02});
             send_data.AddRange(b_track2);
-        send_data.AddRange(new byte[]{0x1B, 0x03});
-        if(track3==null)
-            send_data.Add(0x00);
-        else
+        }
+        if (b_track3 != null)
+        {
+            send_data.AddRange(new byte[]{0x1B, 0x03});
             send_data.AddRange(b_track3);
+        }
         send_data.AddRange(new byte[]{0x3F, 0x1C});
-        MSRStream.SetFeature(CreateReportData(send_data,0xbb,100));
+        byte[] outdata = CreateReportData(send_data, 0xbb, 100);
+        MSRStream.SetFeature(outdata);
         Status? status = WaitStatusByte(timeout);
         return status;
     }
