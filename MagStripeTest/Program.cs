@@ -9,7 +9,7 @@ if (!MSR.TestConnection())
 // Reset
 MSR.Reset();
 MSR.SetCo(true);
-MSR.WriteCardISO("HELLO WORLD","1234567890","1234567890");
+Console.WriteLine(MSR.WriteCardISO("HELLO WORLD","1234567890","1234567890"));
 CSHARPMSR605X_2.MSRData? card = MSR.ReadCardISO();
 if(card==null)
     Console.WriteLine(MSR.ErrorStatus);

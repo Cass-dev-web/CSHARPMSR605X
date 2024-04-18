@@ -125,7 +125,7 @@ public class CSHARPMSR605X_2
     {
         if (MSRStream == null) return Status.INVALID_STATUS_BYTE;
         long start_ms = unixGet();
-        while (unixGet() - start_ms <= timeout) // TODO: It looks like the timeout doesn't work when not being debugged... (??)
+        while (unixGet() - start_ms <= timeout) // BUG: It looks like the timeout doesn't work when not being debugged... (??)
         {
             // Get input
             byte[] out_buffer = MSRStream.Read();
@@ -389,7 +389,7 @@ public class CSHARPMSR605X_2
         else
             send_data.AddRange(b_track3);
         send_data.AddRange(new byte[]{0x3F, 0x1C});
-        UDPSend(CreateReportData(send_data,0xbb,100));
+        MSRStream.SetFeature(CreateReportData(send_data,0xbb,100));
         Status? status = WaitStatusByte(timeout);
         return status;
     }
