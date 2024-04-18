@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using HidSharp;
 namespace MagStripeTest;
 /*
@@ -118,6 +119,36 @@ public class CSHARPMSR605X_2
         if (!Ready()) return;
         Debug.Assert(MSRStream != null, nameof(MSRStream) + " != null");
         MSRStream.SetFeature(CreateReportData(sendBuffer.ToList()));
+    }
+    
+    private Status WaitStatusByte(int timeout = Int32.MaxValue)
+    {
+        if (MSRStream == null) return Status.INVALID_STATUS_BYTE;
+        long start_ms = unixGet();
+        while (unixGet() - start_ms <= timeout) // TODO: It looks like the timeout doesn't work when not being debugged... (??)
+        {
+            // Get input
+            byte[] out_buffer = MSRStream.Read();
+            if (out_buffer.Length == 0) continue;
+            MSRStream.Flush();
+            // Check if the response is correct
+            byte? status = null;
+            for (int i = 0; i < out_buffer.Length; ++i)
+            {
+                if (out_buffer[i] == 0x1B)
+                {
+                    foreach (var statusPair in statusMap)
+                    {
+                        if (statusPair.Key == out_buffer[i + 1])
+                            status = out_buffer[i + 1];
+                    }
+                }
+                if (status!=null)
+                    return statusMap[(byte)status];
+            }
+        }
+
+        return Status.INVALID_STATUS_BYTE;
     }
 
     // PUBLIC METHODS
@@ -324,4 +355,42 @@ public class CSHARPMSR605X_2
         return status == 0x30;
     }
 
+    /// <summary>
+    /// Writes data to a card using the ISO protocol. Make sure to set the coecervity before writing or it might not work.
+    /// </summary>
+    /// <param name="track1">Track 1</param>
+    /// <param name="track2">Track 2</param>
+    /// <param name="track3">Track 3</param>
+    /// <param name="timeout">How long before it times out</param>
+    /// <returns>Status</returns>
+    public Status? WriteCardISO(string? track1, string? track2, string? track3, int timeout = Int32.MaxValue)
+    {
+        if (MSRStream == null) return null;
+        byte[] b_track1 = track1==null?new byte[]{0x00}:Encoding.Default.GetBytes(track1);
+        byte[] b_track2 = track2==null?new byte[]{0x00}:Encoding.Default.GetBytes(track2);
+        byte[] b_track3 = track3==null?new byte[]{0x00}:Encoding.Default.GetBytes(track3);
+        List<byte> send_data = new List<byte>
+        {
+            0x1B, 0x77, 0x1B, 0x73, 
+            0x1B, 0x01
+        };
+        if (track1 == null)
+            send_data.Add(0x00);
+        else
+            send_data.AddRange(b_track1);
+        send_data.AddRange(new byte[]{0x1B, 0x02});
+        if(track2==null)
+            send_data.Add(0x00);
+        else
+            send_data.AddRange(b_track2);
+        send_data.AddRange(new byte[]{0x1B, 0x03});
+        if(track3==null)
+            send_data.Add(0x00);
+        else
+            send_data.AddRange(b_track3);
+        send_data.AddRange(new byte[]{0x3F, 0x1C});
+        UDPSend(CreateReportData(send_data,0xbb,100));
+        Status? status = WaitStatusByte(timeout);
+        return status;
+    }
 }
